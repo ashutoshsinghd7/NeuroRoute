@@ -1,0 +1,9 @@
+[
+  {"name": "copilot",           "capability": 1, "context_limit": 4000,   "cost_per_1k": 0.01, "latency_ms": 300,  "failure_rate": 0.02, "status": "up"},
+  {"name": "chatgpt-2",         "capability": 2, "context_limit": 16000,  "cost_per_1k": 0.05, "latency_ms": 700,  "failure_rate": 0.03, "status": "up"},
+  {"name": "chatgpt-3",         "capability": 2, "context_limit": 8000,   "cost_per_1k": 0.00, "latency_ms": 1200, "failure_rate": 0.08, "status": "up"},
+  {"name": "gpt-5",             "capability": 3, "context_limit": 64000,  "cost_per_1k": 0.30, "latency_ms": 1500, "failure_rate": 0.05, "status": "up"},
+  {"name": "claude-sonnet-4.5", "capability": 4, "context_limit": 128000, "cost_per_1k": 1.00, "latency_ms": 3000, "failure_rate": 0.05, "status": "up"},
+  {"name": "claude-sonnet-5.5", "capability": 5, "context_limit": 200000, "cost_per_1k": 2.50, "latency_ms": 5500, "failure_rate": 0.10, "status": "up"}
+]
+
