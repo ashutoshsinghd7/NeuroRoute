@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NeuroRoute 2026 · Dynamic AI Model Router</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700;800&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Work+Sans:wght@600;800;900&display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          retroBg: '#354E4A',
+          retroDeep: '#233734',
+          retroCard: '#2B423E',
+          retroCream: '#F6EBDD',
+          retroCoral: '#F27360',
+          retroGold: '#F3BE44',
+          retroMint: '#91C4B5',
+          retroDark: '#121C1A',
+        },
+        fontFamily: {
+          retroTitle: ['"Work Sans"', '"Chakra Petch"', 'system-ui', 'sans-serif'],
+          mono: ['"Space Mono"', 'monospace'],
+        },
+        boxShadow: {
+          'brutal': '4px 4px 0px 0px #121C1A',
+          'brutal-sm': '2px 2px 0px 0px #121C1A',
+          'brutal-lg': '6px 6px 0px 0px #121C1A',
+          'brutal-coral': '4px 4px 0px 0px #F27360',
+        }
+      }
+    }
+  }
+</script>
+<style>
+  *{box-sizing:border-box}
+  body{overflow-x:hidden}
+  .gauge-circle{
+    width:104px;height:104px;border-radius:50%;border:2px solid #121C1A;
+    background:#1b2622;overflow:hidden;position:relative;
+    display:flex;flex-wrap:wrap-reverse;align-content:flex-start;align-items:flex-end;
+    justify-content:center;gap:2px;padding:8px 6px 6px;
+  }
+  .gauge-pixel{
+    width:9px;height:9px;flex:none;opacity:0;
+    animation:pixelDrop .5s cubic-bezier(.34,1.56,.64,1) forwards;
+  }
+  @keyframes pixelDrop{
+    0%{transform:translateY(-120px) scale(.6);opacity:0;}
+    70%{opacity:1;}
+    100%{transform:translateY(0) scale(1);opacity:1;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .gauge-pixel{animation:none;opacity:1;}
+  }
+  /* Mobile touch targets & sliders */
+  input[type=range]{
+    accent-color: #F27360;
+  }
+  .touch-target{
+    min-height: 40px;
+  }
+</style>
+</head>
+<body class="bg-retroBg text-retroCream font-mono min-h-screen flex flex-col selection:bg-retroCoral selection:text-retroDark antialiased">
+
+<header class="w-full bg-retroDeep/80 backdrop-blur border-b-2 border-retroDark sticky top-0 z-50">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+    <a class="flex items-center gap-3 group" href="#">
+      <div class="bg-retroCoral text-retroDark px-2.5 py-1 font-extrabold text-2xl tracking-tighter border-2 border-retroDark shadow-brutal-sm group-hover:translate-x-0.5 group-hover:translate-y-0.5 transition-transform font-retroTitle">NR</div>
+      <div class="flex items-baseline tracking-tight font-retroTitle font-extrabold text-2xl text-retroCream">
+        <span>NEUROROUTE</span>
+        <span class="text-xs ml-1.5 px-1.5 py-0.5 bg-retroGold text-retroDark font-mono font-bold border border-retroDark">26</span>
+      </div>
+    </a>
+    <nav class="hidden md:flex items-center space-x-7 text-sm font-bold tracking-wide">
+      <a class="text-retroCream hover:text-retroCoral transition-colors" href="#models">Model Fleet</a>
+      <a class="text-retroCream/90 hover:text-retroCoral transition-colors" href="#request-console">Playground</a>
+      <a class="text-retroCream/90 hover:text-retroCoral transition-colors" href="#matrix-visualizer">Live Mesh</a>
+    </nav>
+    <div class="flex items-center gap-3">
+      <span class="hidden sm:flex items-center gap-2 text-xs font-mono">
+        <span class="w-2 h-2 rounded-full" id="connDot" style="background:#5a6b66"></span>
+        <span id="connLabel" class="text-retroCream/70">checking gateway…</span>
+      </span>
+      <a class="inline-block px-4 sm:px-5 py-2.5 bg-retroCoral text-retroDark font-mono font-bold text-xs sm:text-sm tracking-tight border-2 border-retroDark shadow-brutal hover:translate-x-0.5 hover:translate-y-0.5 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all touch-target flex items-center justify-center" href="#request-console">Launch Console</a>
+    </div>
+  </div>
+</header>
+
+<section class="relative pt-10 sm:pt-12 pb-6 sm:pb-8 px-4 text-center overflow-hidden">
+  <div class="inline-flex items-center gap-2 mb-4 px-3.5 py-1 border border-retroCream/30 bg-retroDeep/60 text-xs font-mono uppercase tracking-widest text-retroCream/80">
+    <span>OCTOBER 2026</span><span>•</span><span class="text-retroGold font-bold">SUB-CENT ARBITRAGE</span><span>•</span><span id="fleetCountBadge">6/6 UNITS ONLINE</span>
+  </div>
+  <h1 class="text-3xl sm:text-5xl lg:text-7xl font-retroTitle font-extrabold tracking-tight text-retroCream leading-[1.1] max-w-4xl mx-auto">
+    <span id="modelCountHeadline">6</span> AI models. <span class="text-retroCoral">One routes for you.</span>
+  </h1>
+  <p class="mt-4 text-sm sm:text-base lg:text-lg max-w-2xl mx-auto text-retroCream/75 font-mono">
+    Every inference query cascades to the lowest-cost model that satisfies your hard latency, context, and quality constraints — or gets a clear refusal.
+  </p>
+</section>
+
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 flex-1 w-full space-y-10">
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+
+    <!-- FLEET PANEL -->
+    <section class="lg:col-span-5 bg-retroCard border-2 border-retroDark shadow-brutal p-4 sm:p-6" id="models">
+      <div class="flex items-center justify-between pb-4 mb-4 border-b-2 border-retroDark">
+        <div>
+          <h2 class="text-xl font-retroTitle font-extrabold text-retroCream tracking-tight">Model Fleet</h2>
+          <p class="text-xs text-retroCream/70 font-mono mt-0.5">Toggle availability or inject synthetic latency.</p>
+        </div>
+        <span class="px-2 py-0.5 bg-retroGold/20 border border-retroGold text-retroGold text-xs font-bold font-mono" id="onlineCountTag">6 / 6 ONLINE</span>
+      </div>
+      <div class="space-y-4" id="fleetCards"></div>
+      <button class="mt-4 w-full py-2.5 border-2 border-retroDark text-xs font-mono font-bold text-retroCream/80 hover:text-retroCream hover:bg-retroDeep transition-colors touch-target" id="resetFleetBtn" type="button">Reset fleet</button>
+    </section>
+
+    <!-- REQUEST CONSOLE -->
+    <section class="lg:col-span-7 bg-retroCard border-2 border-retroDark shadow-brutal p-4 sm:p-6" id="request-console">
+      <div class="flex flex-wrap items-center justify-between pb-4 mb-5 border-b-2 border-retroDark gap-2">
+        <div>
+          <h2 class="text-xl font-retroTitle font-extrabold text-retroCream tracking-tight">Send a Request</h2>
+          <p class="text-xs text-retroCream/70 font-mono mt-0.5">Fires POST /route against your live gateway.</p>
+        </div>
+        <span class="text-xs font-mono text-retroMint" id="envTag">ENV: LOCAL-ROUTE-01</span>
+      </div>
+
+      <div class="mb-5">
+        <label class="block text-xs uppercase font-mono text-retroCream/70 mb-2">Sample Scenarios</label>
+        <div class="flex flex-wrap gap-2" id="presetBar"></div>
+      </div>
+
+      <div class="mb-5">
+        <div class="flex justify-between items-center mb-1">
+          <label class="text-xs font-mono uppercase text-retroCream font-bold" for="promptInput">Prompt Payload</label>
+          <span class="text-[11px] text-retroCream/60 font-mono" id="charCounter">0 tokens estimated</span>
+        </div>
+        <div class="border-2 border-retroDark bg-retroDeep shadow-brutal-sm" id="promptContainer">
+          <textarea class="w-full bg-transparent border-0 text-retroCream font-mono text-sm p-3 focus:ring-0 focus:outline-none resize-y" id="promptInput" placeholder="Enter your query here..." rows="4"></textarea>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+        <div class="bg-retroDeep p-3 border-2 border-retroDark shadow-brutal-sm">
+          <label class="block text-xs font-mono text-retroCream/80 uppercase font-bold mb-1" for="inputMaxLat">Max latency (ms)</label>
+          <input class="w-full bg-retroBg border border-retroDark text-retroCream text-sm font-mono px-3 py-2 focus:border-retroCoral focus:ring-0 touch-target" id="inputMaxLat" type="number" value="2000"/>
+        </div>
+        <div class="bg-retroDeep p-3 border-2 border-retroDark shadow-brutal-sm">
+          <label class="block text-xs font-mono text-retroCream/80 uppercase font-bold mb-1" for="inputMaxCost">Max cost (₹)</label>
+          <input class="w-full bg-retroBg border border-retroDark text-retroCream text-sm font-mono px-3 py-2 focus:border-retroCoral focus:ring-0 touch-target" id="inputMaxCost" step="0.01" type="number" value="0.10"/>
+        </div>
+        <div class="bg-retroDeep p-3 border-2 border-retroDark shadow-brutal-sm">
+          <label class="block text-xs font-mono text-retroCream/80 uppercase font-bold mb-1" for="inputMinCap">Min capability (1 to 5)</label>
+          <select class="w-full bg-retroBg border border-retroDark text-retroCream text-sm font-mono px-3 py-2 focus:border-retroCoral focus:ring-0 touch-target" id="inputMinCap">
+            <option value="1">1 - Basic parsing / simple tasks</option>
+            <option value="2">2 - Summaries &amp; standard reasoning</option>
+            <option value="3">3 - Code generation &amp; analysis</option>
+            <option value="4">4 - Advanced synthesis</option>
+            <option value="5">5 - Deep multi-step reasoning</option>
+          </select>
+        </div>
+        <div class="bg-retroDeep p-3 border-2 border-retroDark shadow-brutal-sm">
+          <label class="block text-xs font-mono text-retroCream/80 uppercase font-bold mb-1" for="inputContext">Required context (tokens)</label>
+          <input class="w-full bg-retroBg border border-retroDark text-retroCream text-sm font-mono px-3 py-2 focus:border-retroCoral focus:ring-0 touch-target" id="inputContext" type="number" value="0"/>
+        </div>
+      </div>
+
+      <div class="mb-6 bg-retroDeep p-3 border-2 border-retroDark shadow-brutal-sm">
+        <label class="block text-xs font-mono text-retroCream/80 uppercase font-bold mb-1" for="inputPref">Optimization Goal</label>
+        <select class="w-full bg-retroBg border border-retroDark text-retroCream text-sm font-mono px-3 py-2.5 focus:border-retroCoral focus:ring-0 touch-target" id="inputPref">
+          <option value="cheapest">Cheapest model that obeys all constraints</option>
+          <option value="fastest">Lowest latency under price cap</option>
+          <option value="highest_quality">Highest capability under price cap</option>
+        </select>
+      </div>
+
+      <button class="w-full py-3.5 bg-retroDeep hover:bg-retroDark border-2 border-retroDark text-retroCream font-retroTitle font-extrabold tracking-wide text-base sm:text-lg uppercase shadow-brutal hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all flex items-center justify-center gap-3 touch-target" id="btnRoute" type="button">
+        <span id="btnRouteLabel">Route Request</span>
+        <span class="text-retroCoral text-xl" id="btnRouteArrow">→</span>
+      </button>
+
+      <div class="mt-5 p-4 bg-retroDeep border-2 border-retroDark hidden" id="routingResultBox"></div>
+    </section>
+  </div>
+
+  <!-- FLEET UTILIZATION PIXEL GAUGES -->
+  <section class="bg-retroCard border-2 border-retroDark shadow-brutal p-4 sm:p-6 lg:p-8" id="matrix-visualizer">
+    <div class="flex flex-col md:flex-row md:items-end justify-between mb-6 pb-4 border-b-2 border-retroDark gap-4">
+      <div>
+        <span class="text-xs uppercase font-mono tracking-widest text-retroGold font-bold">Fleet Utilization</span>
+        <h3 class="text-2xl sm:text-3xl font-retroTitle font-extrabold text-retroCream mt-1">Live Routing Tally</h3>
+        <p class="text-xs sm:text-sm text-retroCream/70 font-mono mt-1">One pixel drops into a unit's gauge every time it's chosen.</p>
+      </div>
+      <button class="px-3 py-2 bg-retroDeep text-retroCream hover:bg-retroCoral hover:text-retroDark border border-retroDark text-xs font-mono font-bold shadow-brutal-sm transition-all touch-target self-start md:self-auto" id="resetTallyBtn" type="button">Reset tally</button>
+    </div>
+    <div class="relative bg-retroDeep border-2 border-retroDark p-4 sm:p-8">
+      <div class="flex flex-wrap items-end justify-center gap-4 sm:gap-8 lg:gap-10" id="tallyRow"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="w-full bg-[#F5EFE6] text-retroDark border-t-2 border-retroDark py-5 px-4 mt-12">
+  <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+    <h4 class="font-retroTitle font-extrabold text-base sm:text-lg tracking-tight text-retroDark">NeuroRoute 2026: <span class="text-retroCoral">AI belongs to everyone.</span></h4>
+    <div class="flex flex-wrap items-center justify-center gap-4 sm:gap-6 font-mono text-xs font-bold uppercase tracking-wider text-retroDark/80">
+      <div class="flex items-center gap-2">
+        <span class="text-retroDark/60 text-[11px]">POWERED BY</span>
+        <span class="bg-retroDark text-[#F5EFE6] px-2 py-0.5 font-black tracking-tighter">SIMCORE</span>
+      </div>
+      <div class="flex items-center gap-2.5">
+        <span class="text-retroDark/60 text-[11px]">FICTIONAL PROVIDERS</span>
+        <span class="font-bold flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-full bg-blue-600"></span>OpenMesh</span>
+        <span class="font-bold flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-full bg-yellow-500"></span>FaceVault</span>
+        <span class="font-bold flex items-center gap-1"><span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-600"></span>TogetherNet</span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var API_BASE = "";
+
+  // Fallback seed in case gateway is initially offline
+  var SEED = [
+    {name:"nano-1",      capability:1, context_limit:4000,   cost_per_1k:0.01, latency_ms:300,  failure_rate:0.0, status:"up"},
+    {name:"mini-2",      capability:2, context_limit:16000,  cost_per_1k:0.05, latency_ms:700,  failure_rate:0.0, status:"up"},
+    {name:"pro-3",       capability:3, context_limit:64000,  cost_per_1k:0.30, latency_ms:1500, failure_rate:0.0, status:"up"},
+    {name:"ultra-4",     capability:4, context_limit:128000, cost_per_1k:1.00, latency_ms:3000, failure_rate:0.0, status:"up"},
+    {name:"max-5",       capability:5, context_limit:200000, cost_per_1k:2.50, latency_ms:5500, failure_rate:0.0, status:"up"},
+    {name:"local-llama", capability:2, context_limit:8000,   cost_per_1k:0.00, latency_ms:1200, failure_rate:0.0, status:"up"}
+  ];
+  var state = SEED.map(function(m){ return Object.assign({}, m); });
+
+  var fleetEl = document.getElementById("fleetCards");
+  var onlineTag = document.getElementById("onlineCountTag");
+  var fleetCountBadge = document.getElementById("fleetCountBadge");
+  var modelCountHeadline = document.getElementById("modelCountHeadline");
+
+  function fmt(n){ return Number(n).toLocaleString("en-IN"); }
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+
+  function renderFleet(){
+    fleetEl.innerHTML = "";
+    var onlineCount = 0;
+    state.forEach(function(m, i){
+      var down = m.status !== "up";
+      if (!down) onlineCount++;
+      var el = document.createElement("article");
+      el.className = "p-3.5 bg-retroDeep border-2 border-retroDark shadow-brutal-sm" + (down ? " opacity-50 grayscale" : "");
+      el.innerHTML =
+        '<div class="flex items-center justify-between">' +
+          '<div class="flex items-center gap-2">' +
+            '<span class="inline-block w-3 h-3 rounded-full ' + (down ? 'bg-retroCoral' : 'bg-retroMint') + ' border border-retroDark' + (i === 0 && !down ? " animate-pulse" : "") + '"></span>' +
+            '<span class="font-bold text-base text-retroCream tracking-tight font-retroTitle">' + esc(m.name) + '</span>' +
+            '<span class="text-[10px] bg-retroBg px-1.5 py-0.2 border border-retroDark text-retroMint font-mono">C' + m.capability + '</span>' +
+          '</div>' +
+          '<button class="px-2.5 py-1 text-xs font-mono font-bold border border-retroDark transition-colors togBtn touch-target ' + (down ? "bg-retroCoral text-retroDark" : "bg-retroCream text-retroDark hover:bg-retroCoral") + '" data-i="' + i + '" type="button">' + (down ? "Restore" : "Take down") + '</button>' +
+        '</div>' +
+        '<p class="text-xs text-retroCream/60 mt-1 font-mono">tier ' + m.capability + ' · ' + fmt(m.context_limit) + ' tokens context · ₹' + m.cost_per_1k.toFixed(2) + ' / 1k</p>' +
+        '<div class="mt-3">' +
+          '<div class="flex justify-between text-xs font-mono mb-1"><span class="text-retroCream/80">Latency</span><span class="text-retroGold font-bold latVal">' + fmt(m.latency_ms) + ' ms</span></div>' +
+          '<input class="w-full accent-retroCoral cursor-pointer h-2 bg-retroBg border border-retroDark latSlider" type="range" min="100" max="8000" step="50" value="' + m.latency_ms + '" data-i="' + i + '" ' + (down ? "disabled" : "") + '>' +
+        '</div>' +
+        '<div class="mt-2.5">' +
+          '<div class="flex justify-between text-xs font-mono mb-1"><span class="text-retroCream/80">Failure rate</span><span class="text-retroCoral font-bold failVal">' + Math.round(m.failure_rate*100) + '%</span></div>' +
+          '<input class="w-full accent-retroCoral cursor-pointer h-2 bg-retroBg border border-retroDark failSlider" type="range" min="0" max="100" step="1" value="' + Math.round(m.failure_rate*100) + '" data-i="' + i + '" ' + (down ? "disabled" : "") + '>' +
+        '</div>';
+      fleetEl.appendChild(el);
+    });
+    onlineTag.textContent = onlineCount + " / " + state.length + " ONLINE";
+    fleetCountBadge.textContent = onlineCount + "/" + state.length + " UNITS ONLINE";
+    modelCountHeadline.textContent = state.length;
+  }
+
+  // Load live fleet from gateway
+  function fetchFleet(){
+    fetch(API_BASE + "/api/models")
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (Array.isArray(data) && data.length){
+          state = data;
+          renderFleet();
+          buildGauges();
+        }
+      })
+      .catch(function(){ /* keep fallback seed */ });
+  }
+
+  // Patch a model on the gateway
+  function patchModel(name, payload){
+    return fetch(API_BASE + "/api/models/" + encodeURIComponent(name), {
+      method: "PATCH",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    }).then(function(r){ return r.json(); });
+  }
+
+  fleetEl.addEventListener("click", function(e){
+    var btn = e.target.closest(".togBtn");
+    if (!btn) return;
+    var i = +btn.dataset.i;
+    var newStatus = state[i].status === "up" ? "down" : "up";
+    state[i].status = newStatus;
+    renderFleet();
+    patchModel(state[i].name, { status: newStatus });
+  });
+
+  fleetEl.addEventListener("input", function(e){
+    var i = +e.target.dataset.i;
+    if (e.target.classList.contains("latSlider")){
+      state[i].latency_ms = +e.target.value;
+      e.target.closest("article").querySelector(".latVal").textContent = fmt(state[i].latency_ms) + " ms";
+    }
+    if (e.target.classList.contains("failSlider")){
+      state[i].failure_rate = (+e.target.value) / 100;
+      e.target.closest("article").querySelector(".failVal").textContent = e.target.value + "%";
+    }
+  });
+
+  fleetEl.addEventListener("change", function(e){
+    var i = +e.target.dataset.i;
+    if (e.target.classList.contains("latSlider")){
+      patchModel(state[i].name, { latency_ms: +e.target.value });
+    }
+    if (e.target.classList.contains("failSlider")){
+      patchModel(state[i].name, { failure_rate: (+e.target.value) / 100 });
+    }
+  });
+
+  document.getElementById("resetFleetBtn").addEventListener("click", function(){
+    fetch(API_BASE + "/api/models/reset", { method: "POST" })
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        state = data;
+        renderFleet();
+      })
+      .catch(function(){
+        state = SEED.map(function(m){ return Object.assign({}, m); });
+        renderFleet();
+      });
+  });
+
+  // ---------- presets ----------
+  var PRESETS = {
+    simple: {label:"Simple question", prompt:"What is the standard port for HTTPS?", maxLat:800, maxCost:0.02, minCap:1, context:0, pref:"cheapest"},
+    contract: {label:"Long contract", prompt:"Analyze this 40-page master services agreement for indemnity clauses, liability caps, and termination rights.", maxLat:3500, maxCost:0.90, minCap:4, context:45000, pref:"highest_quality"},
+    down: {label:"Primary model down", prompt:"Generate an idiomatic Rust parser for protocol buffers using zero-copy byte slices.", maxLat:1800, maxCost:0.50, minCap:3, context:0, pref:"cheapest", downModel:"pro-3"},
+    impossible: {label:"Impossible", prompt:"Compute instant quantum decryption within 50ms at ₹0.001 budget.", maxLat:50, maxCost:0.001, minCap:5, context:10000, pref:"fastest"},
+    vague: {label:"Vague prompt", prompt:"Write something cool about space.", maxLat:2000, maxCost:0.10, minCap:1, context:0, pref:"cheapest"}
+  };
+  var presetBar = document.getElementById("presetBar");
+  Object.keys(PRESETS).forEach(function(key){
+    var p = PRESETS[key];
+    var b = document.createElement("button");
+    b.className = "px-3 py-2 bg-retroDeep text-retroCream hover:bg-retroCoral hover:text-retroDark border border-retroDark text-xs font-mono font-bold shadow-brutal-sm transition-all touch-target";
+    b.textContent = p.label;
+    b.type = "button";
+    b.addEventListener("click", function(){
+      var promptContainer = document.getElementById("promptContainer");
+      if (promptContainer) promptContainer.className = "border-2 border-retroDark bg-retroDeep shadow-brutal-sm";
+      document.getElementById("promptInput").value = p.prompt;
+      document.getElementById("inputMaxLat").value = p.maxLat;
+      document.getElementById("inputMaxCost").value = p.maxCost;
+      document.getElementById("inputMinCap").value = p.minCap;
+      document.getElementById("inputContext").value = p.context;
+      document.getElementById("inputPref").value = p.pref;
+      document.getElementById("charCounter").textContent = "~" + Math.max(1, Math.floor(p.prompt.length / 4)) + " tokens estimated";
+      if (p.downModel){
+        var idx = state.findIndex(function(m){ return m.name === p.downModel; });
+        if (idx > -1){
+          state[idx].status = "down";
+          renderFleet();
+          patchModel(p.downModel, { status: "down" });
+        }
+      }
+    });
+    presetBar.appendChild(b);
+  });
+
+  document.getElementById("promptInput").addEventListener("input", function(e){
+    var promptContainer = document.getElementById("promptContainer");
+    if (promptContainer) promptContainer.className = "border-2 border-retroDark bg-retroDeep shadow-brutal-sm";
+    var tokens = e.target.value.trim() ? Math.max(1, Math.floor(e.target.value.length / 4)) : 0;
+    document.getElementById("charCounter").textContent = "~" + tokens + " tokens estimated";
+  });
+
+  // ---------- connection check ----------
+  var connDot = document.getElementById("connDot");
+  var connLabel = document.getElementById("connLabel");
+  fetch(API_BASE + "/api/models").then(function(r){
+    if (r.ok){
+      connDot.style.background = "#91C4B5"; connLabel.textContent = "gateway online";
+    } else {
+      connDot.style.background = "#F27360"; connLabel.textContent = "gateway error";
+    }
+  }).catch(function(){
+    connDot.style.background = "#F27360"; connLabel.textContent = "gateway offline";
+  });
+
+  // ---------- route request ----------
+  var btn = document.getElementById("btnRoute");
+  var btnLabel = document.getElementById("btnRouteLabel");
+  var btnArrow = document.getElementById("btnRouteArrow");
+  var resultBox = document.getElementById("routingResultBox");
+  btn.addEventListener("click", function(){
+    var promptEl = document.getElementById("promptInput");
+    var promptContainer = document.getElementById("promptContainer");
+    var promptVal = promptEl.value.trim();
+    if (!promptVal){
+      if (promptContainer) promptContainer.className = "border-2 border-retroCoral bg-retroDeep shadow-brutal-sm";
+      promptEl.focus();
+      resultBox.classList.remove("hidden");
+      resultBox.className = "mt-5 p-4 bg-retroDeep border-2 border-retroCoral shadow-brutal";
+      resultBox.innerHTML =
+        '<div class="flex items-center justify-between border-b border-retroCoral/60 pb-2 mb-2">' +
+          '<span class="text-xs font-mono uppercase text-retroCoral font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 bg-retroCoral inline-block"></span> INVALID REQUEST</span>' +
+          '<span class="text-[10px] font-mono bg-retroDark px-2 py-0.5 text-retroCoral border border-retroCoral">Empty Prompt</span>' +
+        '</div>' +
+        '<p class="text-sm font-mono text-retroCream font-bold">Please enter a prompt before routing.</p>' +
+        '<p class="text-xs font-mono text-retroCream/70 mt-1">Type your query into the Prompt Payload box above or select one of the sample scenarios.</p>';
+      return;
+    }
+    if (promptContainer) promptContainer.className = "border-2 border-retroDark bg-retroDeep shadow-brutal-sm";
+    var body = {
+      prompt: promptVal,
+      max_latency_ms: +document.getElementById("inputMaxLat").value,
+      max_cost: +document.getElementById("inputMaxCost").value,
+      min_capability: +document.getElementById("inputMinCap").value,
+      required_context: +document.getElementById("inputContext").value,
+      preference: document.getElementById("inputPref").value
+    };
+
+    btn.disabled = true; btnLabel.textContent = "Routing…"; btnArrow.textContent = "···";
+
+    fetch(API_BASE + "/route", {
+      method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)
+    })
+    .then(function(r){ return r.json().then(function(data){ return {ok:r.ok, data:data}; }); })
+    .then(function(res){ renderResult(res.data, body); })
+    .catch(function(err){ renderErrorResult(err); })
+    .finally(function(){ btn.disabled = false; btnLabel.textContent = "Route Request"; btnArrow.textContent = "→"; });
+  });
+
+  function renderErrorResult(err){
+    resultBox.classList.remove("hidden");
+    resultBox.className = "mt-5 p-4 bg-retroDeep border-2 border-retroCoral";
+    resultBox.innerHTML =
+      '<div class="flex items-center gap-2 border-b border-retroDark/80 pb-2 mb-2">' +
+        '<span class="w-2 h-2 bg-retroCoral inline-block"></span>' +
+        '<span class="text-xs font-mono uppercase text-retroCoral font-bold">Gateway unreachable</span>' +
+      '</div>' +
+      '<p class="text-xs font-mono text-retroCream/80">' + esc(err.message || "network error") + ' — verify gateway is running at /route.</p>';
+  }
+
+  function renderResult(data, req){
+    resultBox.classList.remove("hidden");
+    var trace = data.trace || {};
+    var considered = trace.considered || data.considered || [];
+    var attempts = trace.attempts || [];
+    var cx = trace.complexity || {};
+    var refused = data.status === "NO_VALID_MODEL";
+
+    if (refused){
+      resultBox.className = "mt-5 p-4 bg-retroDeep border-2 border-retroCoral shadow-brutal";
+      var reasonRows = considered.map(function(c){
+        return '<p class="text-[11px] font-mono text-retroCream/80">· <strong class="text-retroCoral font-bold">' + esc(c.model || c.name) + '</strong>: ' + esc(c.reason || "constraint violated") + '</p>';
+      }).join("");
+
+      resultBox.innerHTML =
+        '<div class="flex items-center justify-between border-b border-retroCoral/60 pb-2 mb-3">' +
+          '<span class="text-xs font-mono uppercase text-retroCoral font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 bg-retroCoral inline-block"></span> NO VALID MODEL — REQUEST REFUSED</span>' +
+          '<span class="text-[10px] font-mono bg-retroDark px-2 py-0.5 text-retroCoral border border-retroCoral">Refusal</span>' +
+        '</div>' +
+        '<p class="text-sm font-mono text-retroCream font-bold mb-2">' + esc(data.message || "No model satisfies all constraints. Nothing was sent.") + '</p>' +
+        '<div class="text-xs font-mono text-retroCream/70 mb-3">' +
+          'Complexity Level: <strong class="text-retroGold">' + (cx.level || "—") + '</strong> (raw ' + (cx.raw_level || "—") + ') · Confidence: ' + (cx.confidence || "—") +
+          (cx.low_confidence_routing ? ' <span class="bg-retroGold text-retroDark px-1 font-bold">low-confidence</span>' : '') +
+        '</div>' +
+        '<div class="border-t border-retroDark/80 pt-2">' +
+          '<div class="text-xs font-mono uppercase font-bold text-retroCream/90 mb-1">Constraint Failure Trace:</div>' +
+          '<div class="space-y-1">' + (reasonRows || '<p class="text-xs text-retroCream/60">No candidates passed filter.</p>') + '</div>' +
+        '</div>';
+      return;
+    }
+
+    // Success State
+    if (data.chosen_model) dropPixel(data.chosen_model);
+
+    resultBox.className = "mt-5 p-4 bg-retroDeep border-2 border-retroMint shadow-brutal";
+    var costLine = trace.cost != null ? '<span class="text-retroGold font-bold">₹' + Number(trace.cost).toFixed(4) + '</span>' : '';
+    var latLine = trace.total_latency_ms != null ? '<span class="text-retroGold font-bold">' + fmt(trace.total_latency_ms) + 'ms</span>' : '';
+
+    var consideredList = considered.map(function(c){
+      var isChosen = c.model === data.chosen_model;
+      var statusBadge = c.valid
+        ? '<span class="text-retroMint text-[10px] bg-retroDark px-1.5 py-0.2 border border-retroMint">allowed</span>'
+        : '<span class="text-retroCoral text-[10px] bg-retroDark px-1.5 py-0.2 border border-retroCoral">' + esc(c.reason) + '</span>';
+      return '<div class="flex items-center justify-between text-xs font-mono py-1 border-b border-retroDark/40 ' + (isChosen ? 'text-retroCream font-bold' : 'text-retroCream/70') + '">' +
+        '<span>' + (isChosen ? '★ ' : '· ') + esc(c.model) + (isChosen ? ' <span class="text-[10px] bg-retroMint text-retroDark px-1 font-bold">CHOSEN</span>' : '') + '</span>' +
+        '<span>' + statusBadge + '</span>' +
+      '</div>';
+    }).join("");
+
+    var attemptItems = attempts.map(function(a){
+      var isSuccess = a.status === "success";
+      var statusColor = isSuccess ? "text-retroMint" : (a.status === "skipped" ? "text-retroGold" : "text-retroCoral");
+      return '<li class="text-[11px] font-mono text-retroCream/80 flex items-center justify-between py-0.5">' +
+        '<span>' + esc(a.model) + ': <strong class="' + statusColor + '">' + esc(a.status) + '</strong>' + (a.reason ? ' (' + esc(a.reason) + ')' : '') + '</span>' +
+        '<span>' + (a.ms != null && a.ms > 0 ? a.ms + 'ms' : '0ms') + '</span>' +
+      '</li>';
+    }).join("");
+
+    resultBox.innerHTML =
+      '<div class="flex items-center justify-between border-b border-retroDark/80 pb-2 mb-3">' +
+        '<span class="text-xs font-mono uppercase text-retroMint font-bold flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-retroMint inline-block animate-pulse"></span> ROUTED TO TARGET</span>' +
+        '<span class="text-[10px] font-mono bg-retroDark px-2 py-0.5 text-retroMint border border-retroMint">Success</span>' +
+      '</div>' +
+      '<div class="text-sm font-mono text-retroCream space-y-1.5 mb-3">' +
+        '<p class="text-base">Selected Target: <strong class="text-retroCoral text-lg font-bold">' + esc(data.chosen_model || "—") + '</strong></p>' +
+        (costLine || latLine ? '<p class="text-xs text-retroCream/80 font-mono">Incurred Cost: ' + costLine + (costLine && latLine ? " · Total Latency: " : "") + latLine + '</p>' : '') +
+        (data.answer ? '<div class="mt-2 p-2.5 bg-retroCard border border-retroDark text-xs text-retroCream font-mono">' + esc(data.answer) + '</div>' : '') +
+      '</div>' +
+      '<div class="text-[11px] font-mono text-retroCream/70 mb-3 border-t border-retroDark/80 pt-2">' +
+        'Complexity Level: <strong class="text-retroGold">' + (cx.level || "—") + '</strong> (raw ' + (cx.raw_level || "—") + ') · Confidence: ' + (cx.confidence || "—") + ' · Tokens: ' + (trace.tokens || "—") +
+        (cx.low_confidence_routing ? ' <span class="bg-retroGold text-retroDark px-1 font-bold">low-confidence fallback</span>' : '') +
+      '</div>' +
+      '<div class="border-t border-retroDark/80 pt-2 mb-3">' +
+        '<div class="text-xs font-mono uppercase font-bold text-retroCream/90 mb-1">Candidate Evaluation:</div>' +
+        '<div class="space-y-0.5">' + (consideredList || '<p class="text-xs text-retroCream/60">No data</p>') + '</div>' +
+      '</div>' +
+      (attempts.length ? '<div class="border-t border-retroDark/80 pt-2"><div class="text-xs font-mono uppercase font-bold text-retroCream/90 mb-1">Execution Attempts:</div><ul class="space-y-0.5">' + attemptItems + '</ul></div>' : '');
+  }
+
+  // ---------- fleet utilization tally ----------
+  var TALLY_COLORS = ["#F27360", "#F3BE44", "#91C4B5"];
+  var tally = {}; // model name -> count
+
+  var tallyRow = document.getElementById("tallyRow");
+
+  function buildGauges(){
+    tallyRow.innerHTML = "";
+    state.forEach(function(m){
+      if (!(m.name in tally)) tally[m.name] = 0;
+      var col = document.createElement("div");
+      col.className = "flex flex-col items-center gap-2";
+      col.innerHTML =
+        '<div class="gauge-circle" id="gauge-' + esc(m.name) + '"></div>' +
+        '<div class="text-center">' +
+          '<div class="text-xs font-mono font-bold text-retroCream">' + esc(m.name) + '</div>' +
+          '<div class="text-[11px] font-mono text-retroGold" id="gaugeCount-' + esc(m.name) + '">' + tally[m.name] + ' routed</div>' +
+        '</div>';
+      tallyRow.appendChild(col);
+    });
+  }
+
+  function dropPixel(modelName){
+    if (!(modelName in tally)) tally[modelName] = 0;
+    tally[modelName]++;
+    var circle = document.getElementById("gauge-" + modelName);
+    var countEl = document.getElementById("gaugeCount-" + modelName);
+    if (countEl) countEl.textContent = tally[modelName] + " routed";
+    if (!circle) return;
+    if (circle.children.length >= 34) return;
+    var px = document.createElement("span");
+    px.className = "gauge-pixel";
+    px.style.background = TALLY_COLORS[tally[modelName] % TALLY_COLORS.length];
+    circle.appendChild(px);
+  }
+
+  document.getElementById("resetTallyBtn").addEventListener("click", function(){
+    state.forEach(function(m){ tally[m.name] = 0; });
+    buildGauges();
+  });
+
+  renderFleet();
+  buildGauges();
+  fetchFleet();
+})();
+</script>
+</body>
+</html>

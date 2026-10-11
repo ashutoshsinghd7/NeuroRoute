@@ -1,0 +1,8 @@
+[
+  {"name": "nano-1",      "capability": 1, "context_limit": 4000,   "cost_per_1k": 0.01, "latency_ms": 300,  "failure_rate": 0.0, "status": "up"},
+  {"name": "mini-2",      "capability": 2, "context_limit": 16000,  "cost_per_1k": 0.05, "latency_ms": 700,  "failure_rate": 0.0, "status": "up"},
+  {"name": "pro-3",       "capability": 3, "context_limit": 64000,  "cost_per_1k": 0.30, "latency_ms": 1500, "failure_rate": 0.0, "status": "up"},
+  {"name": "ultra-4",     "capability": 4, "context_limit": 128000, "cost_per_1k": 1.00, "latency_ms": 3000, "failure_rate": 0.0, "status": "up"},
+  {"name": "max-5",       "capability": 5, "context_limit": 200000, "cost_per_1k": 2.50, "latency_ms": 5500, "failure_rate": 0.0, "status": "up"},
+  {"name": "local-llama", "capability": 2, "context_limit": 8000,   "cost_per_1k": 0.0,  "latency_ms": 1200, "failure_rate": 0.0, "status": "up"}
+]
