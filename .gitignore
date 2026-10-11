@@ -1,1 +1,10 @@
-./venv
+@"
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.pytest_cache/
+"@ | Add-Content .gitignore
+__pycache__/
+*.py[cod]
