@@ -5,3 +5,5 @@ venv/
 *.db
 src/classifier/model.joblib
 .pytest_cache/
+.env
+*.env

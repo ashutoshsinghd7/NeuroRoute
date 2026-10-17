@@ -7,6 +7,8 @@ from src.gateway.tokens import estimate_cost, needed_context
 
 def check(model, need_ctx, est_cost, min_cap, max_latency_ms, max_cost):
     """Return None if the model is valid, otherwise a short reason string."""
+    if not model.get("enabled", True):
+        return "model is disabled"
     if model["status"] != "up":
         return "model is down"
     if model["context_limit"] < need_ctx:

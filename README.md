@@ -315,10 +315,272 @@ flowchart TD
 
 ---
 
-## 9. Quick start (to fill in once built)
+## 9. Quick start
 ```bash
 pip install -r requirements.txt
-uvicorn gateway.main:app --reload      # start the router
-streamlit run dashboard/app.py         # start the judge panel
-pytest                                 # run rule tests
+python -m uvicorn src.gateway.main:app --reload  # start gateway & unified dashboard at http://localhost:8000
+python -m pytest                                 # run test suite
 ```
+
+---
+
+## 10. Workspaces and model slots
+
+NeuroRoute features isolated, cookie-based guest workspaces allowing every user to configure up to **six model slots**.
+
+### Core Architecture & Invariants
+1. **The Six-Model Limit**:
+   - Each workspace possesses exactly 6 slots (slots 1 through 6).
+   - Enforced directly by database schema constraints (`CHECK(slot_number BETWEEN 1 AND 6)` and `UNIQUE(workspace_id, slot_number)`). A 7th slot cannot be created.
+   - An **empty slot = no row** in the database; the API dynamically fills gaps to always provide 6 slot objects.
+2. **Guest Sessions**:
+   - Guest workspaces are provisioned automatically via a high-entropy `nr_session` cookie (`secrets.token_urlsafe(32)`).
+   - Only the SHA-256 hash of the token is saved in the database; raw tokens are never logged or stored.
+   - Sessions are browser-scoped and do not synchronize across devices or survive incognito resets.
+3. **Model Manager & Operations**:
+   - Add models to empty slots (`POST /api/workspace/models/{slot}`).
+   - Fully edit/replace models in occupied slots (`PUT /api/workspace/models/{slot}`).
+   - Adjust latency, failure rates, and status (`PATCH /api/workspace/models/{slot}`).
+   - Toggle routing availability (`PATCH /api/workspace/models/{slot}/toggle`).
+   - Run offline simulated latency & health trials (`POST /api/workspace/models/{slot}/test`).
+   - Remove models (`DELETE /api/workspace/models/{slot}`).
+4. **Serverless & Database Considerations**:
+   - SQLite with file persistence in `/tmp` on serverless platforms (e.g. Vercel Lambdas) is ephemeral across cold starts and not shared across concurrent instances. For production serverless deployments, an external managed database (such as Supabase PostgreSQL) is recommended.
+
+---
+
+## 11. Bring Your Own Key (BYOK) & Live Providers
+
+NeuroRoute supports live completions with real LLM providers using BYOK (Bring Your Own Key).
+
+### Supported Providers Allowlist
+For SSRF safety, NeuroRoute enforces a strict provider allowlist with hardcoded API endpoints:
+- **OpenAI** (`openai`): `https://api.openai.com/v1`
+- **Groq** (`groq`): `https://api.groq.com/openai/v1`
+- **DeepSeek** (`deepseek`): `https://api.deepseek.com/v1`
+- **OpenRouter** (`openrouter`): `https://openrouter.ai/api/v1`
+- **Anthropic** (`anthropic`): `https://api.anthropic.com/v1`
+- **Ollama** (`ollama`): `http://localhost:11434/v1` (No API key required)
+
+Custom endpoint URLs are disallowed to eliminate Server-Side Request Forgery (SSRF) risks against private networks and cloud metadata services.
+
+### Generating & Setting the Secret Key
+API keys are encrypted symmetrically at rest using Fernet encryption (`cryptography`). If `NEUROROUTE_SECRET_KEY` is not set when configuring a live model slot with an API key, the API returns HTTP 503 `SECRET_KEY_MISSING` with message `"Live mode needs NEUROROUTE_SECRET_KEY. See README."`.
+
+Generate a 32-byte URL-safe base64 key:
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+Configure the environment variable before starting the server:
+```bash
+# Linux / macOS
+export NEUROROUTE_SECRET_KEY="your-generated-fernet-key"
+
+# Windows PowerShell
+$env:NEUROROUTE_SECRET_KEY="your-generated-fernet-key"
+```
+
+### Safety Limits & Live Call Guards
+1. **Prompt Length Limit**: Prompts sent to `/route` cannot exceed **8,000 characters**. Requests violating this limit are rejected with HTTP 400 `PROMPT_TOO_LONG`.
+2. **Rate Limiting**: To prevent accidental credit drain or runaway loops, live provider invocations are rate-limited to **20 calls per minute** per workspace. Exceeding this returns HTTP 429 `RATE_LIMIT_EXCEEDED`.
+3. **Usage & Cost Tracking**: Completed requests record exact token usage and latency in `trace["usage"]`, consisting strictly of `{"input_tokens", "output_tokens", "actual_cost", "latency_ms"}`. `actual_cost` is calculated in INR (₹) using `cost_per_1k_input`/`output` (or `cost_per_1k`).
+4. **Key Redaction**: API keys never appear in plaintext in logs, database dumps, HTTP responses, or traces. Only the last 4 digits (`key_last4`) and boolean `has_key` are exposed.
+
+### Adding a live model from the dashboard
+1. Ensure the gateway server was started with `NEUROROUTE_SECRET_KEY` set in your environment.
+2. In the **Model Manager** section on the dashboard (`http://localhost:8000`), click **+ Add Model** on any empty slot (or **Edit** on an existing slot).
+3. Set **Execution Mode** to **Live**.
+4. Select a supported provider from the dropdown (e.g. `openai`, `groq`, `deepseek`, `anthropic`, `openrouter`, or local `ollama`).
+5. Enter your provider's API key into the write-only password field (not required for local `ollama`).
+6. Specify your model's parameters: Model ID (e.g. `gpt-4o-mini`), capability tier (1–5), context limit, input/output token pricing, and expected latency.
+7. Click **Save Model**. The key is encrypted immediately on the server; the dashboard card will display a `LIVE` badge and `key ····LAST4`.
+8. Click **Test (real call)** on the slot card to run an instant 1-token health ping to verify live connectivity.
+
+> [!WARNING]
+> **Data Privacy Notice**: When live execution mode is selected, your prompt and context are transmitted directly to the third-party model provider you selected (e.g. OpenAI, Anthropic, Groq). Do not submit confidential data or credentials in prompts.
+
+> [!IMPORTANT]
+> **Key Lifecycle & Security Scope**:
+> - Keys are encrypted at rest, but NeuroRoute guest workspaces are session-isolated workspaces, **not** an enterprise multi-tenant identity/authentication system.
+> - **Do NOT deploy live API keys to ephemeral serverless environments (e.g. Vercel / AWS Lambda with `/tmp` SQLite)**. Ephemeral storage resets between cold starts and instances. Deploy live BYOK only with persistent shared storage (e.g. managed PostgreSQL) and a dedicated secrets manager (e.g., AWS Secrets Manager, HashiCorp Vault).
+> - If `NEUROROUTE_SECRET_KEY` is rotated or lost, previously encrypted keys cannot be recovered or decrypted and must be re-entered.
+
+---
+
+## 12. Dual-Backend Architecture (SQLite & PostgreSQL)
+
+NeuroRoute implements a zero-ORM dual-backend database abstraction in [`src/gateway/db.py`](file:///d:/neuroRoute/NeuroRoute/src/gateway/db.py) supporting both local SQLite storage and high-concurrency PostgreSQL.
+
+### Deterministic Backend Selection Precedence
+1. **Production & Serverless Safety Check**:
+   - The application checks [`is_production_environment()`](file:///d:/neuroRoute/NeuroRoute/src/gateway/db.py) (triggered if `ENVIRONMENT`, `ENV`, `NODE_ENV` is set to `'production'` or `VERCEL` is present).
+   - If in a production environment and `DATABASE_URL` is missing or empty, application startup **fails immediately** with `DatabaseConfigError`. Ephemeral SQLite storage is strictly prohibited in production.
+2. **Explicit Database Selection**:
+   - If `DATABASE_URL` is set: selects **PostgreSQL** via Psycopg 3 connection pooling.
+   - If PostgreSQL connection fails: raises `DatabaseConnectionError`. The application **never silently falls back to SQLite**.
+   - If `DATABASE_URL` is unset or empty: selects **SQLite**. Connects to `NEUROROUTE_DB` if defined, or falls back to local `neuroroute.db`.
+
+### Connection Pooling Configuration & Health Checking
+When PostgreSQL is active, connections are managed through `psycopg_pool.ConnectionPool` with `row_factory=dict_row`, active health check validation, and configurable bounds:
+- `DB_POOL_MIN_SIZE`: Minimum idle connections maintained in the pool (default: `1`).
+- `DB_POOL_MAX_SIZE`: Maximum active connections allocated to the pool (default: `10`).
+- `DB_POOL_TIMEOUT`: Connection acquisition timeout in seconds (default: `10.0`).
+- `DB_POOL_MAX_IDLE`: Maximum duration in seconds a connection may remain idle before eviction (default: `300.0`).
+- `DB_POOL_MAX_LIFETIME`: Maximum total lifespan in seconds before a connection is recycled (default: `3600.0`).
+- **Active Health Checking**: The pool utilizes `check=psycopg_pool.ConnectionPool.check_connection` on connection checkout. Severed or expired connections (e.g., terminated by firewalls, load balancers, or server idle timeouts) are automatically discarded and refreshed transparently without raising errors to the caller.
+
+### Schema Readiness & Separation of Migrations
+- **SQLite Mode**: On server boot, `init_db()` and `init_workspace_schema()` create local tables and indexes if they do not already exist.
+- **PostgreSQL Mode**: Handled inside the FastAPI `lifespan` context manager via [`check_postgres_schema_readiness()`](file:///d:/neuroRoute/NeuroRoute/src/gateway/migrator.py). Performs purely read-only schema verification without requiring DDL privileges (`CREATE/ALTER/DROP`). Aborts safely with `SchemaNotReadyError` if schema is missing or unapplied migrations exist, never falling back to SQLite.
+- **Out-of-Band Migration Runner**: Schema migrations are executed out-of-band using the standalone migration CLI:
+  ```bash
+  # Check migration readiness (read-only)
+  python -m src.gateway.migrator --check
+
+  # Apply pending migrations transactionally with advisory locking
+  python -m src.gateway.migrator
+  ```
+- **Optional Auto-Migration**: For local development and continuous integration, set `AUTO_MIGRATE=1` to allow automatic migration application during application startup.
+- **Least-Privilege Roles**: NeuroRoute defines three isolated database roles ([`scripts/setup_postgres_roles.sql`](file:///d:/neuroRoute/NeuroRoute/scripts/setup_postgres_roles.sql)):
+  1. `neuroroute_admin`: Handles schema and data migrations, sequence ownership, and initial SQLite-to-PostgreSQL imports.
+  2. `neuroroute_app`: Performs normal gateway operations with zero DDL privileges (cannot `DELETE` from `workspaces` or `UPDATE`/`DELETE` `requests`).
+  3. `neuroroute_cleanup`: Performs authorized maintenance purges via [`scripts/cleanup_expired_workspaces.py`](file:///d:/neuroRoute/NeuroRoute/scripts/cleanup_expired_workspaces.py) and unlinks `requests.workspace_id` as required (with zero insert or sequence access).
+
+---
+
+## 13. SQLite-to-PostgreSQL Data Migration Utility
+
+The standalone CLI utility [`scripts/migrate_sqlite_to_postgres.py`](file:///d:/neuroRoute/NeuroRoute/scripts/migrate_sqlite_to_postgres.py) transfers data from SQLite (`neuroroute.db`) to PostgreSQL without downtime or data loss.
+
+### Supported CLI Arguments
+| Argument | Default | Purpose |
+| :--- | :--- | :--- |
+| `--source-db PATH` | `neuroroute.db` | Path to source SQLite database file. Read-only. |
+| `--target-url URL` | `$DATABASE_URL` | Destination PostgreSQL connection URL. |
+| `--init-schema` | `False` | Automatically applies PostgreSQL DDL migrations (`migrations/postgres/`) before importing data if tables are missing. |
+| `--dry-run` | `False` | **Preflight validation only**. Inspects source row counts and schema, checks target connectivity and table emptiness, but **writes zero data**. |
+| `--verify-only` | `False` | **Parity audit only**. Connects to SQLite and PostgreSQL and verifies 100% equivalence of row counts, primary keys, foreign keys, timestamps, and model slot configurations without modifying either database. |
+| `--allow-non-empty` | `False` | Override flag to permit importing into non-empty tables (fails closed by default with `TargetNotEmptyError`). |
+
+### Migration Guarantees & Safety Architecture
+1. **Source Immutability**: The source SQLite file is opened exclusively in read-only mode (`sqlite3.connect('file:...?...&mode=ro', uri=True)`); it is never modified.
+2. **Topological Order**: Tables are imported strictly in foreign-key dependency order:
+   `workspaces` ➔ `model_slots` ➔ `model_test_runs` ➔ `requests`.
+3. **Surrogate Key Preservation**: Rows are inserted with `OVERRIDING SYSTEM VALUE`, preserving exact SQLite primary keys across all four tables.
+4. **Sequence Synchronization**: After insertion, PostgreSQL identity sequences are updated (`setval`) to `MAX(id) + 1` so subsequent application writes never trigger key collisions.
+5. **BYOK Ciphertext Security**: Encrypted API keys in `model_slots.api_key_encrypted` are transferred strictly as opaque ciphertext strings. The migration tool never decrypts, transforms, or logs credentials.
+6. **Atomic Rollback**: The entire migration and sequence update runs in a single transaction; any failure automatically rolls back all changes.
+
+---
+
+## 14. Operational Modalities
+
+NeuroRoute clearly distinguishes three operational environments:
+
+### A. Local Development (Default)
+- **Database**: Local SQLite (`neuroroute.db`).
+- **Setup**: Zero external database dependencies; fully offline.
+- **Command**:
+  ```bash
+  python -m uvicorn src.gateway.main:app --reload
+  ```
+
+### B. PostgreSQL-Backed Local Testing
+- **Database**: Dedicated local/containerized PostgreSQL database (e.g. `127.0.0.1:5432/neuroroute_test`).
+- **Prerequisites**: PostgreSQL 15+ / 17 running locally.
+- **Preflight Check**:
+  ```bash
+  python scripts/migrate_sqlite_to_postgres.py --target-url "postgresql://postgres@localhost:5432/neuroroute_test" --init-schema --dry-run
+  ```
+- **Execute Migration**:
+  ```bash
+  python scripts/migrate_sqlite_to_postgres.py --target-url "postgresql://postgres@localhost:5432/neuroroute_test" --init-schema
+  ```
+- **Verify Parity**:
+  ```bash
+  python scripts/migrate_sqlite_to_postgres.py --target-url "postgresql://postgres@localhost:5432/neuroroute_test" --verify-only
+  ```
+- **Start Gateway with PostgreSQL**:
+  ```bash
+  export DATABASE_URL="postgresql://postgres@localhost:5432/neuroroute_test"
+  python -m uvicorn src.gateway.main:app --reload
+  ```
+
+### C. Future Production Deployment (Blueprint)
+- **Target**: Managed PostgreSQL instance (Supabase, Neon, AWS RDS, GCP Cloud SQL) with mandatory TLS (`sslmode=require`).
+- **Connection Mode**: Connect through a transaction pooler (e.g. Supabase PgBouncer port 6543 or AWS RDS Proxy) for serverless runtimes.
+- **Database Role Separation**:
+  - **Restricted Runtime Role (`neuroroute_app`)**: The gateway server connects strictly as `neuroroute_app`. Performs normal gateway operations (`SELECT, INSERT, UPDATE` on `workspaces`; `SELECT, INSERT, UPDATE, DELETE` on `model_slots`; `SELECT, INSERT` on `model_test_runs` and `requests`; `SELECT` on `schema_migrations`; `USAGE, SELECT` on identity sequences). Cannot `DELETE` from `workspaces` and cannot `UPDATE` or `DELETE` `requests`. Strictly denied DDL permissions (`CREATE`, `ALTER`, `DROP`, `TRUNCATE`). See [`docs/architecture.md`](file:///d:/neuroRoute/NeuroRoute/docs/architecture.md) §2.1 and §6.
+  - **Authorized Maintenance Role (`neuroroute_cleanup`)**: Used exclusively by [`scripts/cleanup_expired_workspaces.py`](file:///d:/neuroRoute/NeuroRoute/scripts/cleanup_expired_workspaces.py) via `CLEANUP_DATABASE_URL`. Performs authorized expired-workspace cleanup (`SELECT, UPDATE, DELETE` on `workspaces`; `SELECT, DELETE` on `model_slots` and `model_test_runs`) and unlinks `requests.workspace_id` (`SELECT, UPDATE (workspace_id)` on `requests`) as required. Strictly denied `INSERT` on all tables, sequence access, and DDL permissions.
+  - **Privileged Migration Role (`neuroroute_admin`)**: Handles schema and data migrations (`migrations/postgres/*.sql`, `python -m src.gateway.migrator`, and `scripts/migrate_sqlite_to_postgres.py`). Requires schema ownership / admin privileges for `OVERRIDING SYSTEM VALUE`, `setval`, and DDL. Migrations must never be executed under the restricted runtime role.
+- **Mandatory Production Secret**: In production (`ENVIRONMENT=production` or `VERCEL=1`), the server performs fail-fast startup validation for `NEUROROUTE_SECRET_KEY`. If missing or malformed, startup immediately aborts with `SecretConfigError`. Production key must match the key used during SQLite encryption to preserve decryptability of existing BYOK credentials.
+- **Rollback Strategy**: Decoupled two-tier rollback:
+  - *Tier 1 (Traffic Rollback)*: Revert application deployment or unset `DATABASE_URL` to immediately fall back to the standby backend (< 2 minutes).
+  - *Tier 2 (Data Disaster Recovery)*: Restore from pre-cutover Point-In-Time-Recovery (PITR) snapshot (< 15 minutes).
+
+---
+
+## 15. Environment Variables Reference
+
+| Variable | Backend | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `DATABASE_URL` | PostgreSQL | `None` (SQLite mode) | Connection string (e.g. `postgresql://user:pw@host:5432/db?sslmode=require`). Activates PostgreSQL mode when set. Mandatory in production. |
+| `AUTO_MIGRATE` | PostgreSQL | `0` (or `None`) | Set to `1` or `true` to automatically apply pending PostgreSQL migrations during gateway startup. Defaults to read-only readiness check. |
+| `MIGRATION_DATABASE_URL` | Migrator | `None` | Optional dedicated admin connection string with DDL privileges for out-of-band schema migrations (`python -m src.gateway.migrator`). |
+| `CLEANUP_DATABASE_URL` | Cleanup | `None` | Optional dedicated maintenance connection string for running workspace cleanup (`scripts/cleanup_expired_workspaces.py`). |
+| `NEUROROUTE_DB` | SQLite | `neuroroute.db` | Path to SQLite database file. Defaults to `/tmp/neuroroute.db` when `VERCEL` is set. |
+| `ENVIRONMENT` | Gateway | `None` | Set to `'production'` in production deployments to enforce mandatory `DATABASE_URL` and `NEUROROUTE_SECRET_KEY`. |
+| `NEUROROUTE_SECRET_KEY` | BYOK | `None` | 32-byte URL-safe base64 Fernet key. Mandatory in production; required for live model BYOK encryption and decryption. |
+| `DB_POOL_MIN_SIZE` | PostgreSQL | `1` | Minimum idle connections in the Psycopg 3 connection pool. |
+| `DB_POOL_MAX_SIZE` | PostgreSQL | `10` | Maximum active connections in the Psycopg 3 connection pool. |
+| `DB_POOL_TIMEOUT` | PostgreSQL | `10.0` | Timeout in seconds when waiting for a free connection from the pool. |
+| `DB_POOL_MAX_IDLE` | PostgreSQL | `300.0` | Maximum duration in seconds an idle connection remains in the pool before eviction. |
+| `DB_POOL_MAX_LIFETIME` | PostgreSQL | `3600.0` | Maximum total lifespan in seconds of a connection before recycling. |
+| `NEUROROUTE_SEED` | Router | `None` | Integer seed for deterministic tie-breaking in simulated test models. |
+| `TRUST_PROXY_HEADERS` | Gateway | `None` | Optional. Set to `1` or `true` when operating behind a trusted reverse proxy that forwards client-facing `X-Forwarded-Host`. |
+
+---
+
+## 16. Testing and Quality Assurance
+
+The automated test suite provides comprehensive coverage across core routing, slot management, sliding expiration, CSRF defense-in-depth, and dual-backend database operations:
+
+```bash
+# Run the complete test suite (201 tests)
+python -m pytest
+
+# Run non-browser unit and integration suite (191 tests)
+python -m pytest --ignore=tests/browser -q
+
+# Run browser E2E Playwright suite (10 tests)
+python -m pytest tests/browser/ -v -rs
+
+# Run CSRF defense-in-depth and body-less mutation tests
+python -m pytest tests/test_csrf_bodyless.py -v
+
+# Run workspace sliding expiration tests
+python -m pytest tests/test_sliding_expiration.py -v
+
+# Run BYOK encryption, secrets, and provider tests
+python -m pytest tests/test_byok.py tests/test_byok_fix.py tests/test_providers.py
+
+# Run workspace isolation and routing tests
+python -m pytest tests/test_slots.py tests/test_workspace_routing.py
+```
+
+---
+
+## 17. Security and Operational Limitations
+
+1. **Master Secret Persistence**:
+   - Provider API keys stored in `model_slots.api_key_encrypted` are encrypted with Fernet symmetric cryptography.
+   - If `NEUROROUTE_SECRET_KEY` is rotated or lost, previously encrypted credentials cannot be decrypted (`InvalidToken`) and must be re-entered by the user.
+2. **Process-Local Rate Limiting**:
+   - The 20 live calls/minute rate limiter is maintained in memory per worker process. In multi-pod or serverless autoscaling environments, rate limiting should be backed by a shared Redis instance to enforce cluster-wide quotas.
+3. **Guest Session Scope & Sliding Expiration**:
+   - Workspaces use high-entropy browser cookies (`nr_session`). They provide isolated sandboxes for live testing without passwords or logins, but do not synchronize across different browsers or survive private browsing resets.
+   - Active workspaces slide their expiration by 30 days upon legitimate request activity (throttled to once per hour, with an emergency slide when remaining lifetime is within 24 hours).
+4. **CSRF Defense-in-Depth & Reverse Proxy Safety**:
+   - State-changing mutations enforce multi-layer verification: Fetch Metadata (`Sec-Fetch-Site: cross-site` rejected), Origin validation with Referer fallback, body-less authenticated mutation protection, and `Content-Type: application/json` enforcement.
+   - Forwarded headers (`X-Forwarded-Host`) are not trusted by default to prevent spoofing attacks. Enable `TRUST_PROXY_HEADERS=1` only when the application is placed behind a verified reverse proxy.
